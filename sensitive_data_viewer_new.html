@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>敏感数据探测结果可视化</title>
+    <style>
+        /* 全局样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        /* 标题栏 */
+        .navbar {
+            background-color: #2c3e50;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .navbar h1 {
+            font-size: 18px;
+            font-weight: 500;
+        }
+        
+        .file-info {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        /* 主容器 */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 50px);
+            overflow: hidden;
+        }
+        
+        /* 左侧导航面板 */
+        .database-sidebar {
+            width: 300px;
+            background-color: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            padding: 15px 20px;
+            background-color: #e9ecef;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 600;
+            font-size: 16px;
+            color: #495057;
+        }
+        
+        .database-node {
+            padding: 10px 20px;
+            background-color: white;
+            border-bottom: 1px solid #f1f1f1;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        
+        .database-node:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .database-node.expanded {
+            background-color: #e3f2fd;
+        }
+        
+        .db-name {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        
+        .db-count {
+            font-size: 12px;
+            color: #6c757d;
+            background-color: #f1f3f4;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        
+        .toggle-icon {
+            font-size: 12px;
+            color: #6c757d;
+            transition: transform 0.2s;
+        }
+        
+        .toggle-icon.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .tables-container {
+            background-color: #fafafa;
+            display: none;
+        }
+        
+        .tables-container.expanded {
+            display: block;
+        }
+        
+        .table-node {
+            padding: 8px 20px 8px 40px;
+            background-color: #fafafa;
+            border-bottom: 1px solid #f1f1f1;
+            cursor: pointer;
+            font-size: 14px;
+            color: #495057;
+            transition: all 0.2s;
+        }
+        
+        .table-node:hover {
+            background-color: #f1f3f4;
+            padding-left: 45px;
+        }
+        
+        .table-node.selected {
+            background-color: #1976d2;
+            color: white;
+            padding-left: 45px;
+        }
+        
+        /* 右侧内容区 */
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* 文件上传区域 */
+        .upload-section {
+            padding: 20px;
+            background-color: white;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .upload-btn {
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .upload-btn:hover {
+            background-color: #1976d2;
+        }
+        
+        #file-input {
+            display: none;
+        }
+        
+        /* 工具栏 */
+        .toolbar {
+            padding: 10px 20px;
+            background-color: #f5f5f5;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .tool-button {
+            background-color: white;
+            border: 1px solid #d0d0d0;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .tool-button:hover {
+            background-color: #f0f0f0;
+            border-color: #b0b0b0;
+        }
+        
+        /* 数据库-表映射区域 */
+        .db-table-map-section {
+            padding: 20px;
+            background-color: white;
+            border-bottom: 1px solid #e0e0e0;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        
+        .db-table-map-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .db-table-map {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .db-table-map th {
+            background-color: #f8f9fa;
+            color: #495057;
+            font-weight: 600;
+            font-size: 14px;
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .db-table-map td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 14px;
+            vertical-align: top;
+        }
+        
+        .db-table-map tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .db-table-map tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .tables-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .table-tag {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        
+        /* 结果表格区域 */
+        .results-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: white;
+            margin: 20px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .results-header {
+            padding: 15px 20px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .results-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .results-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .selected-table-info {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .selected-table-name {
+            font-weight: 500;
+            color: #1976d2;
+        }
+        
+        .results-count {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        /* 表格容器 */
+        .table-container {
+            flex: 1;
+            overflow: auto;
+        }
+        
+        /* 数据表格 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+        }
+        
+        .data-table th {
+            background-color: #f8f9fa;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 2px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .data-table th:hover {
+            background-color: #e9ecef;
+        }
+        
+        .data-table th:after {
+            content: ' ';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+        }
+        
+        .data-table th.sort-asc:after {
+            border-bottom: 4px solid #666;
+        }
+        
+        .data-table th.sort-desc:after {
+            border-top: 4px solid #666;
+        }
+        
+        .data-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 14px;
+            vertical-align: top;
+        }
+        
+        .data-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .data-table tr:hover {
+            background-color: #e6f7ff;
+        }
+        
+        /* 样本数据单元格特殊处理 */
+        .sample-data-cell {
+            font-family: monospace;
+            word-break: break-all;
+            max-width: 100%;
+        }
+        
+        /* 字段名单元格样式 */
+        .field-name {
+            font-weight: 600;
+            background-color: #f0f7ff;
+            width: 200px;
+            min-width: 200px;
+            white-space: nowrap;
+        }
+        
+        /* 记录标题样式 */
+        .record-header {
+            background-color: #2c3e50;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .record-header td {
+            padding: 15px 12px;
+            border-bottom: none;
+        }
+        
+        /* 响应式调整字段名宽度 */
+        @media (max-width: 768px) {
+            .field-name {
+                width: 120px;
+                min-width: 120px;
+                font-size: 0.9em;
+            }
+        }
+        
+        /* 高亮搜索结果 */
+        .highlight {
+            background-color: #fffacd;
+            font-weight: bold;
+        }
+        
+        /* 分页控件 */
+        .pagination {
+            padding: 15px 20px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .page-btn {
+            padding: 6px 12px;
+            border: 1px solid #d0d0d0;
+            background-color: white;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .page-btn:hover:not(:disabled) {
+            background-color: #f0f0f0;
+            border-color: #b0b0b0;
+        }
+        
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination-info {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        /* 无数据状态 */
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 1024px) {
+            .database-sidebar {
+                width: 250px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .database-sidebar {
+                width: 100%;
+                height: 200px;
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+            
+            .results-section {
+                margin: 10px;
+            }
+            
+            .results-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 标题栏 -->
+    <div class="navbar">
+        <h1>敏感数据探测结果可视化</h1>
+        <div class="file-info" id="file-info">未选择文件</div>
+    </div>
+    
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 左侧数据库导航面板 -->
+        <div class="database-sidebar" id="database-sidebar">
+            <div class="sidebar-header">数据库导航</div>
+            <div class="no-data">请上传JSON文件以查看数据库结构</div>
+        </div>
+        
+        <!-- 右侧内容区 -->
+        <div class="content">
+            <!-- 文件上传区域 -->
+            <div class="upload-section">
+                <button class="upload-btn" onclick="document.getElementById('file-input').click()">选择JSON文件</button>
+                <input type="file" id="file-input" accept=".json" />
+            </div>
+            
+            <!-- 工具栏 -->
+            <div class="toolbar" id="toolbar" style="display: none;">
+                <button class="tool-button" onclick="refreshData()">刷新</button>
+                <button class="tool-button" onclick="clearSelection()">清除选择</button>
+            </div>
+            
+            <!-- 数据库-表映射区域 -->
+            <div class="db-table-map-section">
+                <h3>敏感信息数据库-表映射</h3>
+                <div id="db-table-map-container">
+                    <table class="db-table-map" id="dbTableMap">
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;">数据库名称</th>
+                                <th style="width: 70%;">包含敏感信息的表</th>
+                                <th style="width: 10%;">表数量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="3" class="no-data">请上传JSON文件以查看映射数据</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- 结果表格区域 -->
+            <div class="results-section">
+                <div class="results-header">
+                    <h2>敏感数据详细信息</h2>
+                    <div class="results-info">
+                        <div class="selected-table-info">
+                            选中表: <span class="selected-table-name" id="selected-table-name">无</span>
+                        </div>
+                        <div class="results-count">显示 <span id="showing-count">0</span> 条记录</div>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="data-table" id="resultsTable">
+                        <thead>
+                            <tr>
+                                <th colspan="2">数据记录</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="2" class="no-data">请从左侧选择一个表以查看详细信息</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 分页控件 -->
+                <div class="pagination" id="pagination" style="display: none;">
+                    <button class="page-btn" id="first-page" onclick="changePage(1)" disabled>首页</button>
+                    <button class="page-btn" id="prev-page" onclick="changePage(currentPage - 1)" disabled>上一页</button>
+                    <span class="pagination-info" id="pagination-info">第 0 页，共 0 页</span>
+                    <button class="page-btn" id="next-page" onclick="changePage(currentPage + 1)" disabled>下一页</button>
+                    <button class="page-btn" id="last-page" onclick="changePage(0)" disabled>末页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 数据相关变量
+        let originalData = [];
+        let selectedRawData = null; // 保存原始数据
+        let filteredData = [];
+        let currentPage = 1;
+        let rowsPerPage = 15;
+        let sortField = '';
+        let sortDirection = 'asc';
+        let selectedDatabase = null;
+        let selectedTable = null;
+        
+        // 初始化文件选择器
+        document.getElementById('file-input').addEventListener('change', handleFileSelect);
+        
+        // 处理文件选择
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('file-info').textContent = `已选择: ${file.name}`;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const rawData = JSON.parse(e.target.result);
+                    console.log('原始数据结构:', JSON.stringify(rawData).substring(0, 500) + '...');
+                    
+                    // 重置数据
+                    originalData = [];
+                    // 保存原始数据，用于直接显示表内容
+                    selectedRawData = rawData;
+                    
+                    // 简化的数据提取逻辑，只处理示例格式的JSON
+                    if (Array.isArray(rawData)) {
+                        rawData.forEach(item => {
+                            if (item['表名'] && item['数据库名'] && item['数据库类型']) {
+                                const fullDbName = `${item['数据库类型']}-${item['数据库名']}`;
+                                
+                                // 如果有rows数组，处理每一行数据
+                                if (item['rows'] && Array.isArray(item['rows'])) {
+                                    item['rows'].forEach((row, index) => {
+                                        // 只保存必要的关联信息和原始字段数据
+                                        const formattedRow = { ...row };
+                                        formattedRow['完整数据库'] = fullDbName;
+                                        formattedRow['数据库类型'] = item['数据库类型'];
+                                        formattedRow['数据库名'] = item['数据库名'];
+                                        formattedRow['表名'] = item['表名'];
+                                        originalData.push(formattedRow);
+                                    });
+                                }
+                            }
+                        });
+                    }
+                    
+                    console.log('处理后的数据:', originalData.length, '条记录');
+                    
+                    // 重置状态
+                    resetStates();
+                    
+                    // 更新UI
+                    updateUI();
+                    
+                } catch (error) {
+                    console.error('解析错误:', error);
+                    alert(`解析JSON失败: ${error.message}\n\n请检查文件格式是否正确。`);
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        // 格式化数据
+        function formatData(data) {
+            const formattedResults = [];
+            
+            data.forEach((item, index) => {
+                if (typeof item !== 'object' || item === null) {
+                    console.log(`第 ${index + 1} 项不是对象，跳过:`, item);
+                    return;
+                }
+                
+                // 复制原始对象的所有属性
+                const formattedItem = {...item};
+                
+                // 标准化字段名映射 - 添加必要的字段
+                const fieldMappings = {
+                    '数据库类型': ['数据库类型', 'db_type', 'dbType', 'type', 'database_type'],
+                    '数据库名': ['数据库名', 'db_name', 'database', 'db', 'dbname', 'database_name'],
+                    '表名': ['表名', 'table_name', 'table', 'tablename', 'table-name'],
+                    '字段名': ['字段名', 'column_name', 'column', 'field', 'fieldname', 'column-name'],
+                    '字段类型': ['字段类型', 'data_type', 'type', 'column_type', 'field_type'],
+                    '敏感类型': ['敏感类型', 'sensitive_type', 'keyword', 'category', 'sensitive', 'type'],
+                    '字段注释': ['字段注释', 'comment', 'description', 'desc', 'note'],
+                    '样本数据': ['样本数据', 'sample', 'value', 'data', 'example']
+                };
+                
+                // 确保必要字段存在
+                Object.entries(fieldMappings).forEach(([targetField, sourceFields]) => {
+                    if (!formattedItem.hasOwnProperty(targetField)) {
+                        for (const sourceField of sourceFields) {
+                            if (formattedItem.hasOwnProperty(sourceField) && formattedItem[sourceField] !== undefined && formattedItem[sourceField] !== null) {
+                                formattedItem[targetField] = formattedItem[sourceField];
+                                break;
+                            }
+                        }
+                        
+                        if (!formattedItem.hasOwnProperty(targetField)) {
+                            formattedItem[targetField] = 'N/A';
+                        }
+                    }
+                });
+                
+                // 生成完整数据库名
+                if (!formattedItem.hasOwnProperty('完整数据库')) {
+                    if (formattedItem['数据库类型'] !== 'N/A' && formattedItem['数据库名'] !== 'N/A') {
+                        formattedItem['完整数据库'] = `${formattedItem['数据库类型']}-${formattedItem['数据库名']}`;
+                    } else if (formattedItem['数据库名'] !== 'N/A') {
+                        formattedItem['完整数据库'] = formattedItem['数据库名'];
+                    } else {
+                        formattedItem['完整数据库'] = '未知数据库';
+                    }
+                }
+                
+                formattedResults.push(formattedItem);
+            });
+            
+            return formattedResults;
+        }
+        
+        // 扁平化对象数据
+        function flattenObjectData(obj) {
+            const results = [];
+            
+            function traverse(obj, path = []) {
+                if (typeof obj !== 'object' || obj === null) return;
+                
+                if (Array.isArray(obj)) {
+                    obj.forEach((item, index) => {
+                        traverse(item, [...path, index]);
+                    });
+                } else {
+                    // 检查是否包含关键字段
+                    const hasDbInfo = Object.keys(obj).some(key => 
+                        ['db', 'database', '表', 'table', '字段', 'column', 'field'].some(k => 
+                            key.toLowerCase().includes(k.toLowerCase())
+                        )
+                    );
+                    
+                    if (hasDbInfo) {
+                        results.push(formatData([obj])[0]);
+                    } else {
+                        Object.values(obj).forEach(value => {
+                            traverse(value, [...path]);
+                        });
+                    }
+                }
+            }
+            
+            traverse(obj);
+            return results;
+        }
+        
+        // 重置状态
+        function resetStates() {
+            currentPage = 1;
+            sortField = '';
+            sortDirection = 'asc';
+            selectedDatabase = null;
+            selectedTable = null;
+            filteredData = [];
+        }
+        
+        // 更新UI
+        function updateUI() {
+            document.getElementById('toolbar').style.display = 'flex';
+            renderDatabaseTableMap();
+            renderDatabaseSidebar();
+            updateResultsTable();
+        }
+        
+        // 渲染数据库-表映射
+        function renderDatabaseTableMap() {
+            // 创建数据库-表映射
+            const dbTableMap = createDbTableMap();
+            const tbody = document.querySelector('#dbTableMap tbody');
+            
+            if (Object.keys(dbTableMap).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="no-data">未找到敏感信息的数据库和表</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = '';
+            
+            Object.entries(dbTableMap).forEach(([dbName, tables]) => {
+                const row = document.createElement('tr');
+                
+                // 数据库名称单元格
+                const dbCell = document.createElement('td');
+                dbCell.textContent = dbName;
+                
+                // 表列表单元格
+                const tablesCell = document.createElement('td');
+                const tablesList = document.createElement('div');
+                tablesList.className = 'tables-list';
+                
+                tables.forEach(tableName => {
+                    const tableTag = document.createElement('span');
+                    tableTag.className = 'table-tag';
+                    tableTag.textContent = tableName;
+                    tableTag.addEventListener('click', () => {
+                        selectTable(dbName, tableName);
+                    });
+                    tablesList.appendChild(tableTag);
+                });
+                
+                tablesCell.appendChild(tablesList);
+                
+                // 表数量单元格
+                const countCell = document.createElement('td');
+                countCell.textContent = tables.length;
+                countCell.style.textAlign = 'center';
+                
+                row.appendChild(dbCell);
+                row.appendChild(tablesCell);
+                row.appendChild(countCell);
+                tbody.appendChild(row);
+            });
+        }
+        
+        // 渲染数据库侧边栏
+        function renderDatabaseSidebar() {
+            const dbTableMap = createDbTableMap();
+            const sidebar = document.getElementById('database-sidebar');
+            sidebar.innerHTML = '<div class="sidebar-header">数据库导航</div>';
+            
+            if (Object.keys(dbTableMap).length === 0) {
+                sidebar.innerHTML += '<div class="no-data">未找到敏感信息的数据库和表</div>';
+                return;
+            }
+            
+            Object.entries(dbTableMap).forEach(([dbName, tables]) => {
+                // 数据库节点容器
+                const dbContainer = document.createElement('div');
+                
+                // 数据库节点
+                const dbNode = document.createElement('div');
+                dbNode.className = 'database-node';
+                dbNode.innerHTML = 
+                    `<span class="db-name">${dbName}</span>\n                     <span class="db-count">${tables.length}</span>\n                     <span class="toggle-icon">▶</span>`;
+                
+                // 表容器
+                const tablesContainer = document.createElement('div');
+                tablesContainer.className = 'tables-container';
+                
+                // 展开/折叠事件
+                dbNode.addEventListener('click', function(e) {
+                    if (e.target === this || e.target.className === 'toggle-icon' || e.target.className === 'db-name' || e.target.className === 'db-count') {
+                        this.classList.toggle('expanded');
+                        tablesContainer.classList.toggle('expanded');
+                        const toggleIcon = this.querySelector('.toggle-icon');
+                        toggleIcon.classList.toggle('expanded');
+                    }
+                });
+                
+                // 添加表节点
+                tables.forEach(tableName => {
+                    const tableNode = document.createElement('div');
+                    tableNode.className = 'table-node';
+                    tableNode.textContent = tableName;
+                    
+                    // 表选择事件
+                    tableNode.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        selectTable(dbName, tableName);
+                    });
+                    
+                    tablesContainer.appendChild(tableNode);
+                });
+                
+                dbContainer.appendChild(dbNode);
+                dbContainer.appendChild(tablesContainer);
+                sidebar.appendChild(dbContainer);
+            });
+        }
+        
+        // 选择表
+        function selectTable(dbName, tableName) {
+            // 更新选中状态
+            document.querySelectorAll('.table-node').forEach(node => {
+                node.classList.remove('selected');
+                if (node.textContent === tableName && node.closest('.tables-container').previousElementSibling.querySelector('.db-name').textContent === dbName) {
+                    node.classList.add('selected');
+                    // 展开父级数据库节点
+                    const dbNode = node.closest('.tables-container').previousElementSibling;
+                    const tablesContainer = node.closest('.tables-container');
+                    const toggleIcon = dbNode.querySelector('.toggle-icon');
+                    
+                    dbNode.classList.add('expanded');
+                    tablesContainer.classList.add('expanded');
+                    toggleIcon.classList.add('expanded');
+                }
+            });
+            
+            // 更新选中状态变量
+            selectedDatabase = dbName;
+            selectedTable = tableName;
+            
+            // 更新UI
+            document.getElementById('selected-table-name').textContent = `${dbName} - ${tableName}`;
+            
+            // 筛选数据
+            filterDataByTable(dbName, tableName);
+        }
+        
+        // 按表筛选数据
+        function filterDataByTable(dbName, tableName) {
+            // 直接从原始JSON中提取数据，确保获取最准确的数据
+            if (selectedRawData && Array.isArray(selectedRawData)) {
+                const targetTable = selectedRawData.find(item => {
+                    const fullDbName = `${item['数据库类型']}-${item['数据库名']}`;
+                    return fullDbName === dbName && item['表名'] === tableName;
+                });
+                
+                if (targetTable && targetTable['rows'] && Array.isArray(targetTable['rows'])) {
+                    // 只使用rows数组中的原始数据，不添加任何额外信息
+                    filteredData = targetTable['rows'];
+                } else {
+                    // 如果找不到，再从预处理的originalData中筛选
+                    filteredData = originalData.filter(item => {
+                        return item['完整数据库'] === dbName && item['表名'] === tableName;
+                    });
+                }
+            } else {
+                // 后备方案
+                filteredData = originalData.filter(item => {
+                    return item['完整数据库'] === dbName && item['表名'] === tableName;
+                });
+            }
+            
+            // 重置页码
+            currentPage = 1;
+            
+            // 更新表格
+            renderTable();
+        }
+        
+        // 更新结果表格
+        function updateResultsTable() {
+            const tbody = document.querySelector('#resultsTable tbody');
+            tbody.innerHTML = '<tr><td colspan="5" class="no-data">请从左侧选择一个表以查看详细信息</td></tr>';
+            document.getElementById('selected-table-name').textContent = '无';
+            document.getElementById('showing-count').textContent = '0';
+            document.getElementById('pagination').style.display = 'none';
+        }
+        
+        // 渲染表格
+        function renderTable() {
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const endIndex = startIndex + rowsPerPage;
+            const currentData = filteredData.slice(startIndex, endIndex);
+            
+            const tableBody = document.querySelector('#resultsTable tbody');
+            
+            if (currentData.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="10" class="no-data">该表没有数据记录</td></tr>';
+                document.getElementById('pagination').style.display = 'none';
+                document.getElementById('showing-count').textContent = '0';
+                return;
+            }
+            
+            // 更新表格内容
+            tableBody.innerHTML = '';
+            
+            // 获取所有字段名（使用第一条记录的键）
+            const fieldNames = Object.keys(currentData[0]);
+            
+            // 创建表头行
+            const headerRow = document.createElement('tr');
+            fieldNames.forEach(fieldName => {
+                const th = document.createElement('th');
+                th.textContent = fieldName;
+                th.className = 'header-cell';
+                headerRow.appendChild(th);
+            });
+            tableBody.appendChild(headerRow);
+            
+            // 为每条记录创建一行数据
+            currentData.forEach((row, index) => {
+                const dataRow = document.createElement('tr');
+                
+                // 为每个字段创建单元格
+                fieldNames.forEach(fieldName => {
+                    const td = document.createElement('td');
+                    let value = row[fieldName];
+                    
+                    // 处理值
+                    if (value === undefined || value === null) {
+                        value = '无';
+                    } else if (typeof value === 'object') {
+                        try {
+                            value = JSON.stringify(value);
+                        } catch (e) {
+                            value = String(value);
+                        }
+                    }
+                    
+                    // 对于长文本内容进行处理
+                    if (typeof value === 'string' && value.length > 150) {
+                        td.className = 'sample-data-cell';
+                        td.textContent = value.substring(0, 150) + '...';
+                        td.title = value;
+                    } else {
+                        td.textContent = String(value);
+                    }
+                    
+                    dataRow.appendChild(td);
+                });
+                
+                tableBody.appendChild(dataRow);
+            });
+            
+            // 更新显示计数
+            document.getElementById('showing-count').textContent = filteredData.length;
+            
+            // 更新分页
+            updatePagination();
+        }
+        
+        // 更新分页
+        function updatePagination() {
+            const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+            
+            if (totalPages <= 1) {
+                document.getElementById('pagination').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('pagination').style.display = 'flex';
+            document.getElementById('pagination-info').textContent = `第 ${currentPage} 页，共 ${totalPages} 页`;
+            
+            // 更新按钮状态
+            document.getElementById('first-page').disabled = currentPage === 1;
+            document.getElementById('prev-page').disabled = currentPage === 1;
+            document.getElementById('next-page').disabled = currentPage === totalPages;
+            document.getElementById('last-page').disabled = currentPage === totalPages;
+            
+            // 更新末页按钮
+            document.getElementById('last-page').onclick = function() {
+                changePage(totalPages);
+            };
+        }
+        
+        // 更改页码
+        function changePage(page) {
+            const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+            
+            if (page < 1 || page > totalPages) return;
+            
+            currentPage = page;
+            renderTable();
+        }
+        
+        // 处理排序
+        function handleSort(field) {
+            // 切换排序方向
+            if (sortField === field) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortField = field;
+                sortDirection = 'asc';
+            }
+            
+            // 更新表头样式
+            document.querySelectorAll('.data-table th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+            
+            const currentTh = document.querySelector(`.data-table th[data-sort="${field}"]`);
+            if (currentTh) {
+                currentTh.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+            
+            // 排序并重新渲染
+            sortData(field, sortDirection);
+            renderTable();
+        }
+        
+        // 排序数据
+        function sortData(field, direction) {
+            filteredData.sort((a, b) => {
+                let valueA = a[field] || '';
+                let valueB = b[field] || '';
+                
+                // 转换为字符串比较
+                valueA = String(valueA).toLowerCase();
+                valueB = String(valueB).toLowerCase();
+                
+                if (direction === 'asc') {
+                    return valueA.localeCompare(valueB);
+                } else {
+                    return valueB.localeCompare(valueA);
+                }
+            });
+        }
+        
+        // 创建数据库-表映射
+        function createDbTableMap() {
+            const dbTableMap = {};
+            
+            originalData.forEach(item => {
+                const dbName = item['完整数据库'] || '未知数据库';
+                const tableName = item['表名'] || '未知表';
+                
+                if (!dbTableMap[dbName]) {
+                    dbTableMap[dbName] = new Set();
+                }
+                dbTableMap[dbName].add(tableName);
+            });
+            
+            // 转换Set为Array
+            Object.keys(dbTableMap).forEach(dbName => {
+                dbTableMap[dbName] = Array.from(dbTableMap[dbName]).sort();
+            });
+            
+            return dbTableMap;
+        }
+        
+        // 刷新数据
+        function refreshData() {
+            if (originalData.length === 0) return;
+            
+            resetStates();
+            updateUI();
+        }
+        
+        // 清除选择
+        function clearSelection() {
+            selectedDatabase = null;
+            selectedTable = null;
+            
+            // 移除选中状态
+            document.querySelectorAll('.table-node').forEach(node => {
+                node.classList.remove('selected');
+            });
+            
+            document.querySelectorAll('.database-node').forEach(node => {
+                node.classList.remove('expanded');
+                const toggleIcon = node.querySelector('.toggle-icon');
+                if (toggleIcon) toggleIcon.classList.remove('expanded');
+                const tablesContainer = node.nextElementSibling;
+                if (tablesContainer) tablesContainer.classList.remove('expanded');
+            });
+            
+            updateResultsTable();
+        }
+    </script>
+</body>
+</html>
