@@ -14,12 +14,25 @@ class ResultExporter:
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     def _serialize_datetime(self, obj):
-        """序列化 datetime、decimal 和 bytes 类型（JSON 导出用）"""
+        """序列化各种数据库常见类型（JSON 导出用）"""
+        # None值处理
+        if obj is None:
+            return None
+        
+        # 日期时间类型
         if isinstance(obj, datetime):
             return obj.strftime("%Y-%m-%d %H:%M:%S")
+        elif hasattr(obj, 'strftime'):  # 处理date类型
+            return obj.strftime("%Y-%m-%d")
+        
+        # 数字类型
         elif isinstance(obj, decimal.Decimal):
             # 将Decimal转换为字符串以保持精度
             return str(obj)
+        elif isinstance(obj, (int, float, bool)):
+            return obj  # 这些类型可以直接序列化
+        
+        # 二进制类型
         elif isinstance(obj, bytes):
             # 将bytes转换为字符串，尝试UTF-8解码，失败则返回base64编码
             try:
@@ -27,7 +40,24 @@ class ResultExporter:
             except UnicodeDecodeError:
                 import base64
                 return f"[BINARY] {base64.b64encode(obj).decode('utf-8')[:50]}..."
-        raise TypeError(f"Type {type(obj)} not serializable")
+        
+        # 容器类型
+        elif isinstance(obj, (list, tuple)):
+            # 递归处理列表/元组中的每个元素
+            return [self._serialize_datetime(item) for item in obj]
+        elif isinstance(obj, dict):
+            # 递归处理字典中的每个值
+            return {key: self._serialize_datetime(value) for key, value in obj.items()}
+        elif isinstance(obj, (set, frozenset)):
+            # 将集合转换为列表处理
+            return [self._serialize_datetime(item) for item in obj]
+        
+        # 其他类型 - 尝试转换为字符串
+        try:
+            return str(obj)
+        except Exception:
+            # 如果无法转换为字符串，则返回类型信息
+            return f"[OBJECT] {type(obj).__name__}"
 
     def export_json(self, data: List[Dict]) -> None:
         """导出 JSON 格式"""
@@ -38,6 +68,45 @@ class ResultExporter:
             logger.info(f"JSON 结果已保存：{file_path}")
         except Exception as e:
             raise ExportError("json", str(e)) from e
+
+    def _convert_to_csv_safe(self, value):
+        """将值安全转换为CSV可用的字符串格式"""
+        if value is None:
+            return ""
+        
+        # 处理二进制数据
+        if isinstance(value, bytes):
+            try:
+                return value.decode('utf-8')
+            except UnicodeDecodeError:
+                import base64
+                return f"[BINARY] {base64.b64encode(value).decode('utf-8')[:50]}..."
+        
+        # 处理日期时间
+        elif isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        elif hasattr(value, 'strftime'):
+            return value.strftime("%Y-%m-%d")
+        
+        # 处理decimal
+        elif isinstance(value, decimal.Decimal):
+            return str(value)
+        
+        # 处理容器类型
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            return f"[LIST] {len(value)} items"  # 对于列表，显示其长度而不是全部内容
+        elif isinstance(value, dict):
+            return "[DICT] {len(value)} items"  # 对于字典，显示其键值对数量
+        
+        # 其他类型 - 尝试转换为字符串
+        try:
+            result = str(value)
+            # 限制CSV中单个字段的长度，避免Excel等软件无法正常打开
+            if len(result) > 3000:
+                return result[:3000] + "..."  # 截断过长的文本
+            return result
+        except Exception:
+            return f"[OBJECT] {type(value).__name__}"
 
     def export_csv(self, data: List[Dict]) -> None:
         """导出 CSV 格式（按「库名→表名→字段→数据」层级）"""
@@ -67,8 +136,8 @@ class ResultExporter:
                     writer.writerow([f"🗂️  表名：{table_name}"])
                     writer.writerow(columns)  # 字段行
                     for row in rows:
-                        # 按字段顺序提取数据，确保对齐
-                        data_row = [row.get(col, "") for col in columns]
+                        # 按字段顺序提取数据，确保对齐，并进行安全转换
+                        data_row = [self._convert_to_csv_safe(row.get(col, "")) for col in columns]
                         writer.writerow(data_row)
                     writer.writerow([])  # 表之间空行分隔
 
