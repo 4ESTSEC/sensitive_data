@@ -14,12 +14,19 @@ class ResultExporter:
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     def _serialize_datetime(self, obj):
-        """序列化 datetime 和 decimal 类型（JSON 导出用）"""
+        """序列化 datetime、decimal 和 bytes 类型（JSON 导出用）"""
         if isinstance(obj, datetime):
             return obj.strftime("%Y-%m-%d %H:%M:%S")
         elif isinstance(obj, decimal.Decimal):
             # 将Decimal转换为字符串以保持精度
             return str(obj)
+        elif isinstance(obj, bytes):
+            # 将bytes转换为字符串，尝试UTF-8解码，失败则返回base64编码
+            try:
+                return obj.decode('utf-8')
+            except UnicodeDecodeError:
+                import base64
+                return f"[BINARY] {base64.b64encode(obj).decode('utf-8')[:50]}..."
         raise TypeError(f"Type {type(obj)} not serializable")
 
     def export_json(self, data: List[Dict]) -> None:
